@@ -5,5 +5,5 @@ class BasePlayer:
         pass
 
     @abstractmethod
-    def move(self, game, player) -> int:
+    def move(self, game) -> int:
         pass
