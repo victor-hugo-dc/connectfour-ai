@@ -59,8 +59,7 @@ class ConnectFour:
                     if len(self.get_valid_moves()) == 0:
                         self.is_terminal = True
                     
-                    self.switch_player()
-                    
+                self.switch_player()    
                 return False
                 
         
