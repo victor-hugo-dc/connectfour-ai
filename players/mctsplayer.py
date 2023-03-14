@@ -8,13 +8,14 @@ import time
 class MCTSPlayer(BasePlayer):
 
     def __init__(self, time_limit: float = 0.01):
-        self.time_limit = time_limit
+        self.time_limit: float = time_limit        
 
-    def move(self, game, player):
+    def move(self, game: ConnectFour):
         root = Node(game)
-        time_end = time.time() + self.time_limit
+        player = game.player_to_move
+        time_limit: float = time.time() + self.time_limit
 
-        while time.time() < time_end:
+        while time.time() < time_limit:
             curr_node = root
 
             # explore
@@ -27,13 +28,12 @@ class MCTSPlayer(BasePlayer):
                 ucbs = [] # UCB values of each child
                 for child in curr_node.children:
                     UCB = child.q
+                    val: float = math.sqrt(2) * math.sqrt(math.log(child.parent.visits) / child.visits)
 
                     if child.parent.game.player_to_move == ConnectFour.PLAYER_ONE:
-                        UCB -= 2 * math.sqrt(2) * math.sqrt(math.log(child.parent.num_paths) / child.num_paths)
-                        # ucbs.append(child.q - 2 * math.sqrt(2) * math.sqrt(math.log(child.parent.num_paths) / child.num_paths))
+                        UCB -= val
                     else:
-                        UCB += 2 * math.sqrt(2) * math.sqrt(math.log(child.parent.num_paths) / child.num_paths)
-                        # ucbs.append(child.q + 2 * math.sqrt(2) * math.sqrt(math.log(child.parent.num_paths) / child.num_paths))
+                        UCB += val
                     
                     ucbs.append(UCB)
                     
@@ -47,51 +47,51 @@ class MCTSPlayer(BasePlayer):
             
             # expansion
             if not curr_node.game.is_terminal:
+                
                 action = curr_node.actions.pop()
                 game_copy = curr_node.game
                 game_copy.move(action)
                 next_node = Node(game_copy, action, curr_node)
                 curr_node.children.append(next_node)
                 curr_state = next_node
+
                 while not curr_state.game.is_terminal:
                     action = random.choice(curr_state.actions)
                     game_copy = curr_node.game
                     game_copy.move(action)
                     new_state = Node(game_copy, action, curr_state)
                     curr_state = new_state
+
                 if curr_state.game.winner is None:
                     payoff = 0
-                elif curr_state.game.winner == player:
-                    payoff = 1
+
                 else:
-                    payoff = -1
-                tmp = next_node
-                while(tmp is not None):
-                    tmp.num_paths += 1
-                    tmp.payoff += payoff
-                    tmp = tmp.parent
+                    payoff = 1 if curr_state.game.winner == player else -1
+                
+                backprop_node: Node = next_node
+
             else:
                 if curr_node.game.winner is None:
                     payoff = 0
-                elif curr_node.game.winner == player:
-                    payoff = 1
+
                 else:
-                    payoff = -1
+                    payoff = 1 if curr_node.game.winner == player else -1
                 
-                # backpropagation
-                tmp = curr_node
-                while(tmp is not None):
-                    tmp.num_paths += 1
-                    tmp.payoff += payoff
-                    tmp = tmp.parent
+                backprop_node: Node = curr_node
+            
+            # backpropagation
+            while(backprop_node is not None):
+                backprop_node.visits += 1
+                backprop_node.payoff += payoff
+                backprop_node = backprop_node.parent
 
         exploitations = []
         for child in root.children:
-            exploitations.append(child.payoff / child.num_paths)
+            exploitations.append(child.payoff / child.visits)
         
-        if(root.game.player_to_move == 1):
+        if(root.game.player_to_move == ConnectFour.PLAYER_ONE):
             i = exploitations.index(min(exploitations))
         else:
             i = exploitations.index(max(exploitations))
 
-        return root.children[i].game_copy
+        return root.children[i].action
