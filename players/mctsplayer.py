@@ -1,4 +1,4 @@
-from mcts.node import Node
+from ai.node import Node
 from game.connectfour import ConnectFour
 from players.baseplayer import BasePlayer
 import math
