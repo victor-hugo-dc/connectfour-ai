@@ -1,9 +1,7 @@
-from game import Game
-from itertools import count
-from dqn import DQN, select_action, optimize_model, win_rate_test
-from players import RandomPlayer, MCTSPlayer, DQNPlayer
-import torch
-import numpy as np
+from players.randomplayer import RandomPlayer
+from players.mctsplayer import MCTSPlayer
+from game.connectfour import ConnectFour
+
 
 def run_simulation(iterations, players):
     wins = {}
@@ -11,110 +9,49 @@ def run_simulation(iterations, players):
     wins[players[1]] = 0
     
     for i in range(iterations):
-        game = Game(6, 7)
+        if i != 0 and i % 100 == 0:
+            print(f"{i} games simulated")
+            print(f"Player 1: {wins[players[0]]}")
+            print(f"Player 2: {wins[players[1]]}")
+            print("-" * 15)
+            
+        game = ConnectFour()
+        # alternate who goes first
         if i % 2:
-            game.player_to_move = 2
+            game.player_to_move = ConnectFour.PLAYER_TWO
+
         while not game.is_terminal:
             player = players[game.player_to_move - 1]
-            action = player.move(game, game.player_to_move)
+            action = player.move(game)
             if game.move(action):
                 wins[player] += 1
                 break
     return wins
 
+def mcts_random():
+    p1 = MCTSPlayer(0.01)
+    p2 = RandomPlayer()
+    wins = run_simulation(1000, [p1, p2])
+    print("Player 1 wins: " + str(wins[p1]))
+    print("Player 2 wins: " + str(wins[p2]))
+    print("Draws: " + str(1000 - wins[p1] - wins[p2]))
 
-if __name__ == "__main__":
-    try:
-        # p1 = RandomPlayer()
-        # p2 = RandomPlayer()
-        # wins = run_simulation(1000, [p1, p2])
-        # print("Win rate out of 1000 games of one random player against another: " + str(wins[p1] / 10) + "%")
+def mcts_mcts():
+    p1 = MCTSPlayer(0.05)
+    p2 = MCTSPlayer(0.01)
+    wins = run_simulation(1000, [p1, p2])
+    print("Player 1 wins: " + str(wins[p1]))
+    print("Player 2 wins: " + str(wins[p2]))
+    print("Draws: " + str(1000 - wins[p1] - wins[p2]))
 
-        # p1 = MCTSPlayer(1000)
-        # p2 = RandomPlayer()
-        # wins = run_simulation(1000, [p1, p2])
-        # print("Win rate out of 1000 games of MCTS against random player: " + str(wins[p1] / 10) + "%")
+def random_random():
+    p1 = RandomPlayer()
+    p2 = RandomPlayer()
+    wins = run_simulation(1000, [p1, p2])
+    print("Player 1 wins: " + str(wins[p1]))
+    print("Player 2 wins: " + str(wins[p2]))
+    print("Draws: " + str(1000 - wins[p1] - wins[p2]))
 
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        replay_buffer = []
 
-        policy_net = DQN().to(device)
-
-        target_net = DQN().to(device)
-        target_net.load_state_dict(policy_net.state_dict())
-        target_net.eval()
-
-        print("Training DQN -------------------")
-        steps_done = 0
-        training_history = []
-        num_episodes = 20000
-        TARGET_UPDATE = 10
-        mcts = MCTSPlayer(10000)
-        for i in range(num_episodes): 
-            game = Game(6, 7)
-            state_p1 = game.clone().board
-
-            # record every 20 epochs
-            if i % 20 == 19:
-                win_rate, moves_taken = win_rate_test(policy_net)
-                training_history.append([i + 1, win_rate, moves_taken])
-                th = np.array(training_history)
-                # print training message every 200 epochs
-                if i % 1 == 0:
-                    torch.save(policy_net, "model" + str(i))
-                    print('Episode {}: | win_rate: {} | moves_taken: {}'.format(i, th[-1, 1], th[-1, 2]))
-            for t in count():
-                available_actions = game.get_valid_moves()
-                action_p1 = select_action(policy_net, state_p1, available_actions, steps_done)
-                steps_done += 1
-                state_p1_ = game.board
-                reward_p1 = game.move(action_p1)
-                
-                if game.is_terminal:
-                    if reward_p1 == 1:
-                        # reward p1 for p1's win
-                        replay_buffer.append([state_p1, action_p1, 1, None])
-                    else:
-                        # state action value tuple for a draw
-                        replay_buffer.append([state_p1, action_p1, 0.5, None])
-                    break
-                
-                available_actions = game.get_valid_moves()
-                action_p2 = action = mcts.move(game, game.player_to_move)
-                state_p2_ = game.board
-                reward_p2 = game.move(action_p2)
-                
-                if game.is_terminal:
-                    if reward_p2 == 1:
-                        # punish p1 for (random agent) p2's win 
-                        replay_buffer.append([state_p1, action_p1, -1, None])
-                    else:
-                        # state action value tuple for a draw
-                        replay_buffer.append([state_p1, action_p1, 0.5, None])
-                    break
-                
-                # punish for taking too long to win
-                replay_buffer.append([state_p1, action_p1, -0.05, state_p2_])
-                state_p1 = state_p2_
-                
-                # Perform one step of the optimization (on the policy network)
-                optimize_model(policy_net, target_net, replay_buffer)
-                
-            # update the target network, copying all weights and biases in DQN
-            if i % TARGET_UPDATE == TARGET_UPDATE - 1:
-                target_net.load_state_dict(policy_net.state_dict())
-    except KeyboardInterrupt:
-        print('Training Complete')
-
-        print("Test Results:")
-
-        p1 = DQNPlayer(policy_net)
-        p2 = RandomPlayer()
-        wins = run_simulation(1000, [p1, p2])
-        print("Win rate out of 1000 games of DQN against random player: " + str(wins[p1] / 10) + "%")
-
-        p1 = DQNPlayer(policy_net)
-        p2 = MCTSPlayer(1000)
-        wins = run_simulation(1000, [p1, p2])
-        print("Win rate out of 1000 games of DQN against MCTS: " + str(wins[p1] / 10) + "%")
-
+if __name__ == '__main__':
+    mcts_random()
